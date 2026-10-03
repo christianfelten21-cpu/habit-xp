@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type Habit = {
-  id: number;
+  id: string;
   name: string;
   weeklyTarget: number;
   xpReward: number;
@@ -14,28 +14,11 @@ type Habit = {
 
 type XpTransaction = {
   id: string;
-  habitId: number;
+  habitId: string;
   habitName: string;
   week: string;
   amount: number;
 };
-
-const initialHabits: Habit[] = [
-  {
-    id: 1,
-    name: "Neurofeedback",
-    weeklyTarget: 3,
-    xpReward: 100,
-    logs: [],
-  },
-  {
-    id: 2,
-    name: "Sport",
-    weeklyTarget: 3,
-    xpReward: 100,
-    logs: [],
-  },
-];
 
 function localDateString(date = new Date()) {
   const year = date.getFullYear();
@@ -117,7 +100,7 @@ function buildXpTransactions(habits: Habit[]): XpTransaction[] {
 }
 
 export default function Home() {
-  const [habits, setHabits] = useState<Habit[]>(initialHabits);
+  const [habits, setHabits] = useState<Habit[]>([]);
 
   const [name, setName] = useState("");
   const [weeklyTarget, setWeeklyTarget] = useState(3);
@@ -125,33 +108,50 @@ export default function Home() {
 
   const [loaded, setLoaded] = useState(false);
   const [openDatePickers, setOpenDatePickers] = useState<
-    Record<number, boolean>
+    Record<string, boolean>
   >({});
-  const [customDates, setCustomDates] = useState<Record<number, string>>({});
-  const [editingHabitId, setEditingHabitId] = useState<number | null>(null);
+  const [customDates, setCustomDates] = useState<Record<string, string>>({});
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editWeeklyTarget, setEditWeeklyTarget] = useState(1);
   const [editXpReward, setEditXpReward] = useState(100);
   const [celebration, setCelebration] = useState<{ habitName: string; xp: number } | null>(null);
 
   useEffect(() => {
-    const savedHabits = localStorage.getItem("habit-xp-habits");
+    async function loadHabits() {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
 
-    if (savedHabits) {
-      setHabits(JSON.parse(savedHabits));
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const { data: habitRows, error: habitError } = await supabase
+        .from("habits")
+        .select("id, name, weekly_target, xp_reward, archived, habit_logs(id, performed_on)")
+        .order("created_at", { ascending: true });
+
+      if (habitError) {
+        console.error(habitError);
+        setLoaded(true);
+        return;
+      }
+
+      setHabits((habitRows ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        weeklyTarget: row.weekly_target,
+        xpReward: row.xp_reward,
+        archived: row.archived,
+        logs: (row.habit_logs ?? []).map((log: { performed_on: string }) => log.performed_on),
+      })));
+      setLoaded(true);
     }
 
-    // XP are derived from the logs now. Old cached transactions are no longer needed.
-    localStorage.removeItem("habit-xp-transactions");
-
-    setLoaded(true);
+    loadHabits();
   }, []);
-
-  useEffect(() => {
-    if (!loaded) return;
-
-    localStorage.setItem("habit-xp-habits", JSON.stringify(habits));
-  }, [habits, loaded]);
 
   const transactions = useMemo(() => buildXpTransactions(habits), [habits]);
 
@@ -162,7 +162,7 @@ export default function Home() {
     );
   }, [transactions]);
 
-  function addCompletion(habit: Habit, performedAt = localDateString()) {
+  async function addCompletion(habit: Habit, performedAt = localDateString()) {
     if (!performedAt || performedAt > localDateString()) return;
 
     const targetWeek = getWeekKey(performedAt);
@@ -173,13 +173,25 @@ export default function Home() {
       countBefore < habit.weeklyTarget &&
       countBefore + 1 >= habit.weeklyTarget;
 
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase.from("habit_logs").insert({
+      user_id: user.id,
+      habit_id: habit.id,
+      performed_on: performedAt,
+    });
+    if (error) {
+      console.error(error);
+      return;
+    }
+
     setHabits((currentHabits) =>
       currentHabits.map((currentHabit) =>
         currentHabit.id === habit.id
-          ? {
-              ...currentHabit,
-              logs: [...currentHabit.logs, performedAt],
-            }
+          ? { ...currentHabit, logs: [...currentHabit.logs, performedAt] }
           : currentHabit
       )
     );
@@ -200,15 +212,19 @@ export default function Home() {
     }));
   }
 
-  function removeCompletion(habitId: number, logIndex: number) {
+  async function removeCompletion(habitId: string, logIndex: number) {
+    const habit = habits.find((item) => item.id === habitId);
+    if (!habit) return;
+    const performedOn = habit.logs[logIndex];
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { data: rows } = await supabase.from("habit_logs").select("id").eq("habit_id", habitId).eq("performed_on", performedOn).limit(1);
+    if (!rows?.[0]) return;
+    const { error } = await supabase.from("habit_logs").delete().eq("id", rows[0].id);
+    if (error) return console.error(error);
     setHabits((currentHabits) =>
-      currentHabits.map((habit) =>
-        habit.id === habitId
-          ? {
-              ...habit,
-              logs: habit.logs.filter((_, index) => index !== logIndex),
-            }
-          : habit
+      currentHabits.map((item) =>
+        item.id === habitId ? { ...item, logs: item.logs.filter((_, index) => index !== logIndex) } : item
       )
     );
   }
@@ -220,41 +236,59 @@ export default function Home() {
     setEditXpReward(habit.xpReward);
   }
 
-  function saveHabit(habitId: number) {
+  async function saveHabit(habitId: string) {
     if (!editName.trim() || editWeeklyTarget < 1 || editXpReward < 0) return;
 
-    setHabits((currentHabits) =>
-      currentHabits.map((habit) =>
-        habit.id === habitId
-          ? { ...habit, name: editName.trim(), weeklyTarget: editWeeklyTarget, xpReward: editXpReward }
-          : habit
-      )
-    );
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { error } = await supabase.from("habits").update({
+      name: editName.trim(), weekly_target: editWeeklyTarget, xp_reward: editXpReward
+    }).eq("id", habitId);
+    if (error) return console.error(error);
+    setHabits((currentHabits) => currentHabits.map((habit) =>
+      habit.id === habitId ? { ...habit, name: editName.trim(), weeklyTarget: editWeeklyTarget, xpReward: editXpReward } : habit
+    ));
     setEditingHabitId(null);
   }
 
-  function archiveHabit(habitId: number) {
-    setHabits((currentHabits) =>
-      currentHabits.map((habit) =>
-        habit.id === habitId ? { ...habit, archived: true } : habit
-      )
-    );
+  async function archiveHabit(habitId: string) {
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { error } = await supabase.from("habits").update({ archived: true }).eq("id", habitId);
+    if (error) return console.error(error);
+    setHabits((currentHabits) => currentHabits.map((habit) =>
+      habit.id === habitId ? { ...habit, archived: true } : habit
+    ));
     setEditingHabitId(null);
   }
 
-  function addHabit() {
+  async function addHabit() {
     if (!name.trim()) return;
     if (weeklyTarget < 1) return;
     if (xpReward < 0) return;
 
-    const newHabit: Habit = {
-      id: Date.now(),
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase.from("habits").insert({
+      user_id: user.id,
       name: name.trim(),
-      weeklyTarget,
-      xpReward,
+      weekly_target: weeklyTarget,
+      xp_reward: xpReward,
+    }).select("id, name, weekly_target, xp_reward, archived").single();
+
+    if (error || !data) return console.error(error);
+
+    const newHabit: Habit = {
+      id: data.id,
+      name: data.name,
+      weeklyTarget: data.weekly_target,
+      xpReward: data.xp_reward,
+      archived: data.archived,
       logs: [],
     };
-
     setHabits((currentHabits) => [...currentHabits, newHabit]);
 
     setName("");
