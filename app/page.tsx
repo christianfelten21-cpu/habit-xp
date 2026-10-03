@@ -345,12 +345,20 @@ export default function Home() {
             <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">
               Habit XP
             </p>
-            <Link
-              href="/rewards"
-              className="rounded-xl border border-zinc-700 px-3 py-2 text-sm transition hover:bg-zinc-800"
-            >
-              Rewards
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/rewards"
+                className="rounded-xl border border-zinc-700 px-3 py-2 text-sm transition hover:bg-zinc-800"
+              >
+                Rewards
+              </Link>
+              <Link
+                href="/account"
+                className="rounded-xl border border-zinc-700 px-3 py-2 text-sm transition hover:bg-zinc-800"
+              >
+                Account
+              </Link>
+            </div>
           </div>
 
           <h1 className="text-4xl font-bold tracking-tight">Diese Woche</h1>
