@@ -9,6 +9,7 @@ type Habit = {
   weeklyTarget: number;
   xpReward: number;
   logs: string[];
+  archived?: boolean;
 };
 
 type XpTransaction = {
@@ -127,6 +128,10 @@ export default function Home() {
     Record<number, boolean>
   >({});
   const [customDates, setCustomDates] = useState<Record<number, string>>({});
+  const [editingHabitId, setEditingHabitId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editWeeklyTarget, setEditWeeklyTarget] = useState(1);
+  const [editXpReward, setEditXpReward] = useState(100);
 
   useEffect(() => {
     const savedHabits = localStorage.getItem("habit-xp-habits");
@@ -194,6 +199,35 @@ export default function Home() {
     );
   }
 
+  function startEditing(habit: Habit) {
+    setEditingHabitId(habit.id);
+    setEditName(habit.name);
+    setEditWeeklyTarget(habit.weeklyTarget);
+    setEditXpReward(habit.xpReward);
+  }
+
+  function saveHabit(habitId: number) {
+    if (!editName.trim() || editWeeklyTarget < 1 || editXpReward < 0) return;
+
+    setHabits((currentHabits) =>
+      currentHabits.map((habit) =>
+        habit.id === habitId
+          ? { ...habit, name: editName.trim(), weeklyTarget: editWeeklyTarget, xpReward: editXpReward }
+          : habit
+      )
+    );
+    setEditingHabitId(null);
+  }
+
+  function archiveHabit(habitId: number) {
+    setHabits((currentHabits) =>
+      currentHabits.map((habit) =>
+        habit.id === habitId ? { ...habit, archived: true } : habit
+      )
+    );
+    setEditingHabitId(null);
+  }
+
   function addHabit() {
     if (!name.trim()) return;
     if (weeklyTarget < 1) return;
@@ -256,7 +290,7 @@ export default function Home() {
         </section>
 
         <section className="space-y-4">
-          {habits.map((habit) => {
+          {habits.filter((habit) => !habit.archived).map((habit) => {
             const currentWeekLogs = habit.logs
               .map((date, index) => ({ date, index }))
               .filter((log) => isInCurrentWeek(log.date))
@@ -281,12 +315,66 @@ export default function Home() {
                     </p>
                   </div>
 
-                  {reached && (
-                    <span className="rounded-full bg-white px-3 py-1 text-sm font-medium text-black">
-                      Geschafft
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {reached && (
+                      <span className="rounded-full bg-white px-3 py-1 text-sm font-medium text-black">
+                        Geschafft
+                      </span>
+                    )}
+                    <button
+                      onClick={() => startEditing(habit)}
+                      className="rounded-lg border border-zinc-700 px-2 py-1 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
+                    >
+                      Bearbeiten
+                    </button>
+                  </div>
                 </div>
+
+                {editingHabitId === habit.id && (
+                  <div className="mb-5 space-y-3 rounded-2xl border border-zinc-700 bg-zinc-950 p-4">
+                    <input
+                      value={editName}
+                      onChange={(event) => setEditName(event.target.value)}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 outline-none focus:border-zinc-400"
+                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="text-sm text-zinc-400">
+                        Wochenziel
+                        <input
+                          type="number"
+                          min="1"
+                          value={editWeeklyTarget}
+                          onChange={(event) => setEditWeeklyTarget(Number(event.target.value))}
+                          className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white outline-none focus:border-zinc-400"
+                        />
+                      </label>
+                      <label className="text-sm text-zinc-400">
+                        XP
+                        <input
+                          type="number"
+                          min="0"
+                          value={editXpReward}
+                          onChange={(event) => setEditXpReward(Number(event.target.value))}
+                          className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white outline-none focus:border-zinc-400"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => saveHabit(habit.id)} className="rounded-xl bg-white px-4 py-2 font-semibold text-black">
+                        Speichern
+                      </button>
+                      <button onClick={() => setEditingHabitId(null)} className="rounded-xl border border-zinc-700 px-4 py-2">
+                        Abbrechen
+                      </button>
+                      <button onClick={() => archiveHabit(habit.id)} className="ml-auto rounded-xl border border-zinc-700 px-4 py-2 text-zinc-400 hover:text-white">
+                        Habit archivieren
+                      </button>
+                    </div>
+                    <p className="text-xs text-zinc-600">
+                      Archivieren entfernt das Habit aus deiner aktiven Liste, behält aber Logs und XP-Historie.
+                    </p>
+                  </div>
+                )}
 
                 <div className="mb-5">
                   <div className="mb-2 flex justify-between text-sm">
