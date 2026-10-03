@@ -132,6 +132,7 @@ export default function Home() {
   const [editName, setEditName] = useState("");
   const [editWeeklyTarget, setEditWeeklyTarget] = useState(1);
   const [editXpReward, setEditXpReward] = useState(100);
+  const [celebration, setCelebration] = useState<{ habitName: string; xp: number } | null>(null);
 
   useEffect(() => {
     const savedHabits = localStorage.getItem("habit-xp-habits");
@@ -164,6 +165,14 @@ export default function Home() {
   function addCompletion(habit: Habit, performedAt = localDateString()) {
     if (!performedAt || performedAt > localDateString()) return;
 
+    const targetWeek = getWeekKey(performedAt);
+    const countBefore = habit.logs.filter(
+      (log) => getWeekKey(log) === targetWeek
+    ).length;
+    const reachesGoalNow =
+      countBefore < habit.weeklyTarget &&
+      countBefore + 1 >= habit.weeklyTarget;
+
     setHabits((currentHabits) =>
       currentHabits.map((currentHabit) =>
         currentHabit.id === habit.id
@@ -174,6 +183,11 @@ export default function Home() {
           : currentHabit
       )
     );
+
+    if (reachesGoalNow) {
+      setCelebration({ habitName: habit.name, xp: habit.xpReward });
+      window.setTimeout(() => setCelebration(null), 2200);
+    }
 
     setOpenDatePickers((current) => ({
       ...current,
@@ -250,6 +264,47 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
+      {celebration && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
+          <div className="absolute inset-0 bg-white/5 animate-pulse" />
+          {Array.from({ length: 18 }).map((_, index) => {
+            const angle = (index / 18) * Math.PI * 2;
+            const distance = 110 + (index % 4) * 24;
+            return (
+              <span
+                key={index}
+                className="absolute h-3 w-3 rounded-full bg-white"
+                style={{
+                  transform: `translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px)`,
+                  opacity: 0,
+                  animation: `goal-particle 900ms ease-out ${(index % 5) * 35}ms forwards`,
+                }}
+              />
+            );
+          })}
+          <div className="relative rounded-3xl border border-white/20 bg-zinc-950/95 px-10 py-8 text-center shadow-2xl animate-[goal-pop_2200ms_ease-out_forwards]">
+            <p className="text-sm uppercase tracking-[0.25em] text-zinc-400">
+              Wochenziel geschafft
+            </p>
+            <p className="mt-2 text-3xl font-bold">{celebration.habitName}</p>
+            <p className="mt-3 text-5xl font-black">+{celebration.xp} XP</p>
+          </div>
+        </div>
+      )}
+      <style jsx global>{`
+        @keyframes goal-pop {
+          0% { opacity: 0; transform: scale(.55); }
+          12% { opacity: 1; transform: scale(1.12); }
+          22% { transform: scale(1); }
+          82% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(.96); }
+        }
+        @keyframes goal-particle {
+          0% { opacity: 0; transform: translate(0, 0) scale(.4); }
+          12% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `}</style>
       <div className="mx-auto max-w-3xl px-6 py-12">
         <header className="mb-10">
           <div className="mb-5 flex items-center justify-between gap-4">
