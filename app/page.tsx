@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type Habit = {
@@ -217,9 +218,17 @@ export default function Home() {
     <main className="min-h-screen bg-zinc-950 text-white">
       <div className="mx-auto max-w-3xl px-6 py-12">
         <header className="mb-10">
-          <p className="mb-2 text-sm uppercase tracking-[0.25em] text-zinc-500">
-            Habit XP
-          </p>
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <p className="text-sm uppercase tracking-[0.25em] text-zinc-500">
+              Habit XP
+            </p>
+            <Link
+              href="/rewards"
+              className="rounded-xl border border-zinc-700 px-3 py-2 text-sm transition hover:bg-zinc-800"
+            >
+              Rewards
+            </Link>
+          </div>
 
           <h1 className="text-4xl font-bold tracking-tight">Diese Woche</h1>
         </header>
